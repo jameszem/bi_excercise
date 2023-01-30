@@ -1,0 +1,55 @@
+create or replace stream staging_stream
+on table raw_data;
+
+
+
+create or replace table final_staging_table (
+   player_id varchar(20),
+   device_id varchar(20),
+   install_date varchar(20),
+   client_id varchar(20),
+   app_name varchar(40),
+   country varchar(10));
+   
+
+
+CREATE OR REPLACE TASK BIEXERCISE_DB.PUBLIC.RAW_DATA_CHANGES
+    WAREHOUSE = COMPUTE_WH_U
+    SCHEDULE = '1 MINUTE'
+    WHEN SYSTEM$STREAM_HAS_DATA('BIEXERCISE_DB.PUBLIC.STAGING_STREAM')
+    AS
+merge into BIEXERCISE_DB.PUBLIC.FINAL_STAGING_TABLE f
+USING (SELECT raw_file:event_data.appUserId::STRING p,
+        raw_file:event_data.data.eventData.platformAccountId::STRING d,
+        raw_file:event_data.timestampClient::STRING i,
+        raw_file:event_data.platform::STRING cl,
+        raw_file:event_data.appName::STRING a,
+        raw_file:event_data.countryCode::STRING co, 
+        METADATA$ACTION, METADATA$ISUPDATE
+        FROM BIEXERCISE_DB.PUBLIC.STAGING_STREAM 
+        where raw_file:event_data.data.eventData.eventType like '%server_install%') s
+ON s.d = f.device_id            
+when matched
+    and S.METADATA$ACTION ='DELETE' 
+    and S.METADATA$ISUPDATE = 'FALSE'
+    then delete 
+when matched
+    and S.METADATA$ACTION ='INSERT' 
+    and S.METADATA$ISUPDATE  = 'TRUE'       
+    then update 
+    set f.player_id = s.p,
+        f.device_id = s.d,
+        f.install_date = s.i,
+        f.client_id = s.cl,
+        f.app_name = s.a,
+        f.country = s.co
+when not matched 
+    and s.METADATA$ACTION ='INSERT'
+    then INSERT 
+    (f.player_id, f.device_id, f.install_date, f.client_id, f.app_name, f.country)
+    values
+ (s.p, s.d, s.i, s.cl, s.a, s.co);
+ 
+ 
+ 
+ ALTER TASK BIEXERCISE_DB.PUBLIC.RAW_DATA_CHANGES RESUME;
