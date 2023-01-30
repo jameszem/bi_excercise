@@ -1,0 +1,10 @@
+create or replace table raw_data (
+    raw_file variant);
+
+
+
+create or replace pipe json_snowpipe
+auto_ingest = true
+as
+copy into raw_data
+from @json_stage;
